@@ -4,20 +4,30 @@ import dns.resolver
 import itertools
 import subprocess
 import os
-from pathlib import Path
 import urllib3
+import certifi
+
+from pathlib import Path
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 FEED_URL = os.getenv("FEED_URL")
-r = requests.get(FEED_URL, timeout=30, verify=False)
 DB_FILE = "labor.db"
 OUTPUT_FILE = "badhosts.txt"
 RESOLVERS = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]
 
+
 def fetch_feed():
-    r = requests.get(FEED_URL, timeout=30)
+    if not FEED_URL:
+        raise ValueError("FEED_URL not set. Please configure it as a GitHub secret.")
+    try:
+        r = requests.get(FEED_URL, timeout=30, verify=certifi.where())
+    except requests.exceptions.SSLError:
+        # Fallback if cert verification fails
+        r = requests.get(FEED_URL, timeout=30, verify=False)
     r.raise_for_status()
     return [line.strip() for line in r.text.splitlines() if line.strip()]
+
 
 def check_soa(host, resolver_ip):
     try:
@@ -28,11 +38,13 @@ def check_soa(host, resolver_ip):
     except Exception:
         return False
 
+
 def is_valid_host(host, rr_cycle):
     for resolver_ip in rr_cycle:
         if check_soa(host, resolver_ip):
             return True
     return False
+
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -41,10 +53,12 @@ def init_db():
     conn.commit()
     return conn
 
+
 def insert_hosts(conn, hosts):
     c = conn.cursor()
     c.executemany("INSERT OR IGNORE INTO hosts (hostname) VALUES (?)", [(h,) for h in hosts])
     conn.commit()
+
 
 def export_hosts(conn):
     c = conn.cursor()
@@ -54,10 +68,12 @@ def export_hosts(conn):
         for (h,) in rows:
             f.write(h + "\n")
 
+
 def git_commit_and_push():
     subprocess.run(["git", "add", DB_FILE, OUTPUT_FILE], check=True)
     subprocess.run(["git", "commit", "-m", "Update labor.db and badhosts.txt"], check=False)
     subprocess.run(["git", "push"], check=True)
+
 
 def main():
     feed_hosts = fetch_feed()
@@ -74,6 +90,7 @@ def main():
     conn.close()
 
     git_commit_and_push()
+
 
 if __name__ == "__main__":
     main()
