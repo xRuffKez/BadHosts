@@ -5,8 +5,11 @@ import itertools
 import subprocess
 import os
 from pathlib import Path
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 FEED_URL = os.getenv("FEED_URL")
+r = requests.get(FEED_URL, timeout=30, verify=False)
 DB_FILE = "labor.db"
 OUTPUT_FILE = "badhosts.txt"
 RESOLVERS = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]
