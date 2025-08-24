@@ -3,6 +3,7 @@ import requests
 import dns.resolver
 import itertools
 import subprocess
+import os
 from pathlib import Path
 
 FEED_URL = os.getenv("FEED_URL")
