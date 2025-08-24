@@ -22,8 +22,7 @@ def fetch_feed():
         raise ValueError("FEED_URL not set. Please configure it as a GitHub secret.")
     try:
         r = requests.get(FEED_URL, timeout=30, verify=certifi.where())
-    except requests.exceptions.SSLError:
-        # Fallback if cert verification fails
+    except requests.exceptions.SSLError:     
         r = requests.get(FEED_URL, timeout=30, verify=False)
     r.raise_for_status()
     return [line.strip() for line in r.text.splitlines() if line.strip()]
@@ -45,6 +44,19 @@ def is_valid_host(host, rr_cycle):
             return True
     return False
 
+def prune_invalid_hosts(conn, rr_cycle):
+    c = conn.cursor()
+    c.execute("SELECT hostname FROM hosts")
+    rows = c.fetchall()
+
+    to_remove = []
+    for (host,) in rows:
+        if not is_valid_host(host, [next(rr_cycle)]):
+            to_remove.append(host)
+
+    if to_remove:
+        c.executemany("DELETE FROM hosts WHERE hostname = ?", [(h,) for h in to_remove])
+        conn.commit()
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -74,23 +86,23 @@ def git_commit_and_push():
     subprocess.run(["git", "commit", "-m", "Update labor.db and badhosts.txt"], check=False)
     subprocess.run(["git", "push"], check=True)
 
-
 def main():
     feed_hosts = fetch_feed()
     rr_cycle = itertools.cycle(RESOLVERS)
+    conn = init_db()
+    prune_invalid_hosts(conn, rr_cycle)
 
     valid_hosts = []
     for host in feed_hosts:
         if is_valid_host(host, [next(rr_cycle)]):
             valid_hosts.append(host)
 
-    conn = init_db()
     insert_hosts(conn, valid_hosts)
+
     export_hosts(conn)
     conn.close()
 
     git_commit_and_push()
-
 
 if __name__ == "__main__":
     main()
