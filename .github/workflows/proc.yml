@@ -46,6 +46,11 @@ jobs:
           FEED_URL: ${{ secrets.FEED_URL }}
         run: python src/proc.py
 
+      - name: Exclude FP from badhosts.txt
+        run: |
+          grep -v -F -f exclude.txt badhosts.txt > badhosts.filtered
+          mv badhosts.filtered badhosts.txt
+
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
